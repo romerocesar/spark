@@ -172,6 +172,26 @@ def titleFeatures(title):
     return (length(title),numTokens(title),volume(title),separator(title),parentheses(title),years(title),numbers(title))
 
 
+def getYear(s):
+    match =  re.search('[1-2]\d\d\d',s)
+    if match != None:
+        y = int(match.group(0))
+        return y
+
+    match =  re.search('\d{1,2}-\w{2,3}-(\d\d)',s)
+    if match != None:
+        y = int(match.group(1))
+        if y < 14:
+            return 2000+y
+        else:
+            return 1900+y
+    return 0000
+
+
+def dateFeatures(s1,s2):
+    return (getYear(s1)-getYear(s2))
+
+
 def jaccard(t1,t2):
     intersection = 0.0
     for t in t1:
@@ -250,14 +270,24 @@ import sys
 import random
 random.seed()
 
+
+bad_data = {}
+with open(sys.argv[2],'r') as f:
+    for l in f:
+        l = l.strip()
+        bad_data[l] = True
+
+
 c= 0
 with open(sys.argv[1],'r') as f:
     next(f)
-    for l in f:
+    for l in f: 
         l = l.strip()
         fields = l.split('","')
         
-        if fields[REGION] == 'FR':
+
+        rownum = fields[ROWNUM][1:]
+        if rownum in bad_data:
             continue
 
         tag = fields[TAG][:-1]
@@ -266,7 +296,7 @@ with open(sys.argv[1],'r') as f:
         b = 1
         if tag == NEGATIVE:
             b = 0
-        
+
         vector = []
         vector += list(createFeatures(fields[TITLE3P],fields[TITLEAMZ]))
         vector += list(createFeatures(fields[TITLE3P],removeSeparator(fields[TITLEAMZ])))
@@ -276,10 +306,12 @@ with open(sys.argv[1],'r') as f:
         vector += list(createFeatures(fields[AUTHOR3P],fields[AUTHORAMZ]))
         vector += list(createFeatures(fields[PUB3P],fields[PUBAMZ]))
         vector += list(createFeatures(fields[DESC3P][:250],fields[DESCAMZ][:250]))
+        vector += list(createFeatures(fields[DESC3P][:100],fields[DESCAMZ][:100]))
         vector += list(titleFeatures(fields[TITLEAMZ]))
         vector += list(titleFeatures(fields[TITLE3P]))
+        vector.append(dateFeatures(fields[DATE3P],fields[DATEAMZ]))
 
-        if random.random() < 0.6:
+        if random.random() < 0.8:
             vectors_train.append(vector)
             labels_train.append(b)
         else:
