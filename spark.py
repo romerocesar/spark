@@ -1,14 +1,13 @@
 import os
 import sys
 from nltk.tokenize.punkt import PunktWordTokenizer
-from sklearn.preprocessing import PolynomialFeatures
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.cross_validation import cross_val_score
 from sklearn.preprocessing import Imputer
 from sklearn import svm
 from sklearn import linear_model
 import  sklearn.metrics as metrics
-
+from sklearn.ensemble import RandomForestClassifier
 
 import numpy as np
 import math
@@ -50,7 +49,9 @@ def learn_lr(X,Y):
     for w in [1.0]:
         weight  = {1:w,0:1.0}
         print 'weight',w
-        clf = linear_model.LogisticRegression(penalty='l1',class_weight=weight)
+        #clf = linear_model.LogisticRegression(penalty='l1',class_weight=weight)
+        clf = svm.SVC(kernel='poly',degree=2,cache_size=2048,C=1)
+    
         scores = cross_val_score(clf, X, Y, cv = 5, scoring='recall')
         print("Recall: %0.3f (+/- %0.3f)" % (scores.mean(), scores.std() * 2))
         print scores
@@ -75,7 +76,46 @@ def learn_lr(X,Y):
                 p+=1
         wh.close()
 
+        wh = open('coefs%s.txt'%w,'w')
+        p = 0
+        for i in xrange(len(coef)): 
+            if coef[i] != 0.0:
+                p+=1
+        wh.close()
+
         print "total",len(coef),"non zero", p
+
+def writeOut(fname,R,Y):
+    pred = zip(R,Y)
+    wh = open(fname ,'w')
+    wh.write('"ROW_NUMBER","LABEL"\n')
+    for (rownum,py) in pred: 
+        if py==0:
+            wh.write('"%s","NEGATIVE"\n'%rownum)
+        else:
+            wh.write('"%s","POSITIVE"\n'%rownum)
+    
+
+
+def train_test(X,Y,R,XT,YT):
+    weight  = {1:1.0,0:1.0}
+    #clf = linear_model.LogisticRegression(penalty='l1',class_weight=weight)
+    #clf = svm.SVC(kernel='poly',degree=2,cache_size=2048,C=1)
+    
+    clf = RandomForestClassifier(n_estimators=25)
+    clf.fit(X, Y)
+    Y_pred =  clf.predict(XT)
+        
+    Z = zip(YT,Y_pred)
+
+    x = metrics.precision_recall_fscore_support(YT,Y_pred)
+    print "Precision\tRecall\n0:%0.2f\t%0.2f\n1:%0.2f\t%0.2f\n"%(x[0][0],x[1][0],x[0][1],x[1][1])
+    
+    report = metrics.classification_report(YT,Y_pred)
+    print report
+
+    writeOut('expected.txt',R,YT)
+    writeOut('predicted.txt',R,Y_pred)
 
 
 def length(title):
@@ -180,16 +220,28 @@ def poly(v):
             nv.append(v[i]*v[j])
     return nv
 
-vectors = []
-labels  = []
 
+vectors_train = []
+labels_train  = []
+
+rows_test = []
+vectors_test = []
+labels_test  = []
+
+import sys
 import random
+random.seed()
 
 c= 0
-with open('training_us.txt','r') as f:
+with open(sys.argv[1],'r') as f:
+    next(f)
     for l in f:
         l = l.strip()
         fields = l.split('","')
+        
+        if fields[REGION] == 'FR':
+            continue
+
         tag = fields[TAG][:-1]
         tag = tag.strip()
         
@@ -207,11 +259,19 @@ with open('training_us.txt','r') as f:
         vector += list(createFeatures(fields[PUB3P],fields[PUBAMZ]))
         vector += list(titleFeatures(fields[TITLEAMZ]))
         vector += list(titleFeatures(fields[TITLE3P]))
-        
-        vectors.append(vector)
-        labels.append(b)
+
+        if random.random() < 0.75:
+            vectors_train.append(vector)
+            labels_train.append(b)
+        else:
+            rows_test.append(fields[ROWNUM])
+            vectors_test.append(vector)
+            labels_test.append(b)
 
         c+=1
         if c % 10000 == 0:
-            print c
-learn_lr(vectors, np.asarray(labels))
+            sys.stdout.write('.')
+            
+print 'Start Training'
+train_test(vectors_train, np.asarray(labels_train), rows_test, vectors_test, np.asarray(labels_test))
+
