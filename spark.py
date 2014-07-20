@@ -11,6 +11,7 @@ from sklearn.ensemble import RandomForestClassifier
 
 import numpy as np
 import math
+import re
 
 NEGATIVE = "NEGATIVE"
 POSITIVE = "POSITIVE"
@@ -98,11 +99,8 @@ def writeOut(fname,R,Y):
 
 
 def train_test(X,Y,R,XT,YT):
-    weight  = {1:1.0,0:1.0}
-    #clf = linear_model.LogisticRegression(penalty='l1',class_weight=weight)
-    #clf = svm.SVC(kernel='poly',degree=2,cache_size=2048,C=1)
-    
-    clf = RandomForestClassifier(n_estimators=25)
+    weight  = {1:0.5,0:1.0}
+    clf = RandomForestClassifier(n_estimators=30)
     clf.fit(X, Y)
     Y_pred =  clf.predict(XT)
         
@@ -116,6 +114,11 @@ def train_test(X,Y,R,XT,YT):
 
     writeOut('expected.txt',R,YT)
     writeOut('predicted.txt',R,Y_pred)
+
+    print 'Errors'
+    for i in xrange(len(R)):
+        if YT[i] != Y_pred[i]:
+            print R[i],YT[i],Y_pred[i] 
 
 
 def length(title):
@@ -155,7 +158,6 @@ def volume(title):
         return 1.0
     return 0.0
 
-import re
 def years(title):
     if re.search('[1-2]\d\d\d',title):
         return 1.0
@@ -188,6 +190,15 @@ def containtment(t1,t2):
         return 0.0
     return float(intersection)/float(len(t1))
 
+
+def getShingles(title, shingleSize=4):
+    title = re.sub("\s+","",title)
+    shingles = set()
+    for i in xrange(len(title)-shingleSize):
+        shingles.add(title[i:i+shingleSize])
+    return shingles
+        
+
 def createFeatures(src,tgt):
     srcTokenList = PunktWordTokenizer().tokenize(src)
     tgtTokenList = PunktWordTokenizer().tokenize(tgt)
@@ -207,7 +218,14 @@ def createFeatures(src,tgt):
     bclr = containtment(srcTokens,tgtTokens)
     bcrl = containtment(srcTokens,tgtTokens)
 
-    return (j,clr,crl,bj,bclr,bcrl)
+    srcShingles = getShingles(src)
+    tgtShingles = getShingles(tgt)
+
+    sj = jaccard(srcShingles,tgtShingles)
+    sclr = containtment(srcShingles,tgtShingles)
+    scrl = containtment(srcShingles,tgtShingles)
+
+    return (j,clr,crl,bj,bclr,bcrl,sj,sclr,scrl)
 
 
 def poly(v):
@@ -257,20 +275,22 @@ with open(sys.argv[1],'r') as f:
         vector += list(createFeatures(fields[TITLEAMZ],removeParenthesesSection(fields[TITLE3P])))
         vector += list(createFeatures(fields[AUTHOR3P],fields[AUTHORAMZ]))
         vector += list(createFeatures(fields[PUB3P],fields[PUBAMZ]))
+        vector += list(createFeatures(fields[DESC3P][:250],fields[DESCAMZ][:250]))
         vector += list(titleFeatures(fields[TITLEAMZ]))
         vector += list(titleFeatures(fields[TITLE3P]))
 
-        if random.random() < 0.75:
+        if random.random() < 0.6:
             vectors_train.append(vector)
             labels_train.append(b)
         else:
-            rows_test.append(fields[ROWNUM])
+            rows_test.append(fields[ROWNUM][1:])
             vectors_test.append(vector)
             labels_test.append(b)
 
         c+=1
         if c % 10000 == 0:
             sys.stdout.write('.')
+            sys.stdout.flush()
             
 print 'Start Training'
 train_test(vectors_train, np.asarray(labels_train), rows_test, vectors_test, np.asarray(labels_test))
